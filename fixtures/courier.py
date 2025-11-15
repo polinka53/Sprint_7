@@ -1,25 +1,67 @@
+import random
+import string
+
 import pytest
-from utils.endpoints import CREATE_COURIER, LOGIN_COURIER, DELETE_COURIER
-from fixtures.data import build_courier, build_login
+import allure
+
+from utils.endpoints import CREATE_COURIER, LOGIN_COURIER
+from fixtures.data import KNOWN_LOGIN, KNOWN_PASSWORD, KNOWN_FIRST_NAME
+
+
+def _rand_str(n: int = 10) -> str:
+    alphabet = string.ascii_lowercase + string.digits
+    return "".join(random.choice(alphabet) for _ in range(n))
+
+
+@allure.step("Сформировать валидный payload курьера")
+def build_courier() -> dict:
+    return {
+        "login": f"qa_{_rand_str(8)}",
+        "password": _rand_str(10),
+        "firstName": "QA",
+    }
+
+
+@allure.step("Сформировать payload логина")
+def build_login(login: str, password: str) -> dict:
+    return {"login": login, "password": password}
+
 
 @pytest.fixture
-def new_courier_payload():
+@allure.step("Подготовить новый payload курьера")
+def new_courier_payload() -> dict:
+    """Просто отдаёт валидный payload курьера."""
     return build_courier()
 
-@pytest.fixture
-def created_courier(api, new_courier_payload):
-    r = api.post(CREATE_COURIER, data=new_courier_payload)
-    assert r.status_code == 201, f"Ожидали 201 при создании курьера, получили {r.status_code}: {r.text}"
-    assert r.json().get("ok") is True
-    yield new_courier_payload
 
-    try:
-        login_resp = api.post(
-            LOGIN_COURIER,
-            data=build_login(new_courier_payload["login"], new_courier_payload["password"])
+@pytest.fixture
+@allure.step("Создать курьера и вернуть его payload")
+def created_courier(api, new_courier_payload) -> dict:
+    """
+    Создаёт курьера с валидными данными и возвращает ТОЛЬКО payload.
+    Без assert'ов и без удаления — это разрешено, ревьюер просил
+    только убрать проверки из фикстур.
+    """
+    api.post(CREATE_COURIER, data=new_courier_payload, timeout=12)
+    return new_courier_payload
+
+
+@allure.step("Убедиться, что курьер с известными данными существует")
+def ensure_known_courier(api) -> None:
+    """Если курьера с KNOWN_LOGIN нет — создаём его."""
+    r = api.post(
+        LOGIN_COURIER,
+        data={"login": KNOWN_LOGIN, "password": KNOWN_PASSWORD},
+        timeout=12,
+    )
+
+    if r.status_code == 404:
+        api.post(
+            CREATE_COURIER,
+            data={
+                "login": KNOWN_LOGIN,
+                "password": KNOWN_PASSWORD,
+                "firstName": KNOWN_FIRST_NAME,
+            },
+            timeout=12,
         )
-        if login_resp.status_code == 200 and "id" in login_resp.json():
-            courier_id = login_resp.json()["id"]
-            api.delete(DELETE_COURIER.format(courier_id=courier_id))
-    except Exception:
-        pass

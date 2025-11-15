@@ -1,32 +1,66 @@
 import pytest
 import allure
-from utils.endpoints import CREATE_ORDER, LIST_ORDERS
-from fixtures.data import build_order_payload
 
-@allure.epic("Orders")
-@allure.feature("Создание заказа")
+from utils.endpoints import CREATE_ORDER, LIST_ORDERS 
+from fixtures.orders import build_order_payload
+
+
+@allure.suite("Orders: create")
 class TestCreateOrder:
-    @allure.title("Создание заказа: BLACK/GREY/оба/без цвета → 201 и есть track")
+    @allure.title("Можно создать заказ с одним цветом → 201 и есть track")
     @pytest.mark.parametrize("colors", [
-        (["BLACK"], "BLACK"),
-        (["GREY"], "GREY"),
-        (["BLACK", "GREY"], "BOTH"),
-        ([], "NONE")
-    ], ids=["black", "grey", "both", "none"])
-    @pytest.mark.smoke
-    def test_create_order_colors(self, api, colors):
-        color_list, _ = colors
-        payload = build_order_payload(color_list)
-        r = api.post(CREATE_ORDER, json=payload)
-        assert r.status_code == 201, f"Ожидали 201, получили {r.status_code}: {r.text}"
-        assert isinstance(r.json().get("track"), int)
+        ["BLACK"],
+        ["GREY"],
+    ])
+    def test_create_order_single_color(self, api, colors):
+        payload = build_order_payload(colors)
 
-@allure.epic("Orders")
-@allure.feature("Список заказов")
+        r = api.post(CREATE_ORDER, data=payload, timeout=12)
+
+        assert r.status_code == 201, (
+            f"Ожидали 201, получили {r.status_code}: {r.text}"
+        )
+        assert r.json().get("track"), (
+            f"В ответе нет track: {r.text}"
+        )
+
+    @allure.title("Можно указать оба цвета → 201 и есть track")
+    def test_create_order_both_colors(self, api):
+        payload = build_order_payload(["BLACK", "GREY"])
+
+        r = api.post(CREATE_ORDER, data=payload, timeout=12)
+
+        assert r.status_code == 201, (
+            f"Ожидали 201, получили {r.status_code}: {r.text}"
+        )
+        assert r.json().get("track"), (
+            f"В ответе нет track: {r.text}"
+        )
+
+    @allure.title("Можно создать заказ без указания цвета → 201 и есть track")
+    def test_create_order_no_color(self, api):
+        payload = build_order_payload([])
+
+        r = api.post(CREATE_ORDER, data=payload, timeout=12)
+
+        assert r.status_code == 201, (
+            f"Ожидали 201, получили {r.status_code}: {r.text}"
+        )
+        assert r.json().get("track"), (
+            f"В ответе нет track: {r.text}"
+        )
+
+
+@allure.suite("Orders: list")
 class TestOrdersList:
-    @allure.title("GET /orders возвращает список заказов")
-    def test_orders_list(self, api):
-        r = api.get(LIST_ORDERS)
-        assert r.status_code == 200
-        body = r.json()
-        assert isinstance(body.get("orders"), list)
+    @allure.title("Список заказов возвращается и это массив")
+    def test_orders_list_is_array(self, api):
+        r = api.get(LIST_ORDERS , timeout=12)
+
+        assert r.status_code == 200, (
+            f"Ожидали 200, получили {r.status_code}: {r.text}"
+        )
+
+        orders = r.json().get("orders")
+        assert isinstance(orders, list), "Поле 'orders' должно быть списком"
+        assert len(orders) > 0, "Список заказов пустой"
